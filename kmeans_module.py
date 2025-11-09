@@ -81,45 +81,46 @@ def compare_colors(base_colors, target_colors, threshold=30):
     return matches
 
 def analyze_image(image_path):
-    """Betrachte die Mitte des ausgeschnittenen Bildes und extrahiere die dominanten Farben. Die Abstände dieser Farben im RGB-Spektrum zu 
-    den fest definierten 4 Tantrix Farben werden berechnet, die 3 Farben im Bild, welche am nähesten sind, werden 
-    ausgewählt und weiter verwendet. Es wird eine color map definiert, welche die im Bild vorkommenden Farbtöne verknüpft 
-    mit den Tantrix-Farben. Dann werden die äußeren 8 Bildausschnitte betrachtet und die vorkommenden Farben
-    verglichen mit den 3 markanten Farben aus der Mitte. Daraus wird eine Folge von Farben generiert."""
+    """Consider the center of the cropped image and extract dominant colors. 
+    Compute distances of these colors in RGB space to the four predefined Tantrix colors.
+    Select the three image colors that are closest to the reference set and use them further.
+    Define a color map that links the occurring image color tones to the Tantrix colors.
+    Then examine the outer 8 image segments and compare their colors with the three prominent center colors.
+    From that comparison generate a sequence of colors."""
     image = cv2.imread(image_path)
     if image is None:
         raise FileNotFoundError(f"Bild konnte nicht geladen werden: {image_path}")
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    # Analysiere die Mitte und vergleiche die dominantesten Farben mit den 4 Tantrix-Farben
+    # Analyze the center and compare the dominant colors with the 4 Tantrix colors
     middle = get_middle_region(image_rgb, 0.65)
     mid_pixels = middle.reshape(-1, 3)
     mid_centers, _ = cluster_colors(mid_pixels, k=6)
-    # Sortiere schwarz (Hintergrund auf den Spielsteinen aus)
+    # Filter out black (background on the tiles)
     candidate_colors = [c for c in mid_centers if not is_dark(c)]
 
-    # Vergleiche die gefundenen Farben
+    # Compare the found colors
     best_matches = find_best_reference_matches(candidate_colors, REFERENCE_COLORS, top_n=3)
     allowed_reference_codes = [code for _, code in best_matches]
     color_map = {tuple(c.tolist()): code for c, code in best_matches}
 
     segments = split_into_grid(image_rgb, 3, 3)
-    # positions = [0, 1, 2, 5, 8, 7, 6, 3]  # im Uhrzeigersinn
-    positions = [0, 3, 6, 7, 8, 5, 2, 1]  # gegen Uhrzeigersinn
+    # positions = [0, 1, 2, 5, 8, 7, 6, 3]  # clockwise
+    positions = [0, 3, 6, 7, 8, 5, 2, 1]  # counter-clockwise
 
     result = []
     for idx in positions:
         segment = segments[idx]
         seg_pixels = segment.reshape(-1, 3)
-        # Maximal 4 Farben pro Segment: Hintergrund, schwarz, zwei Tantrix-Farben
+        # Up to 4 colors per segment: background, black, two Tantrix colors
         seg_centers, _ = cluster_colors(seg_pixels, k=4)
-        # Vergleiche die im Segment gefundenen Farben mit den Farben aus der Mitte und verknüpfe diese
+        # Compare the colors found in the segment with the center colors and link them
         matched_colors = compare_colors([c for c, _ in best_matches], seg_centers, threshold=35)
 
         labels = []
         for c in matched_colors:
             c_tuple = tuple(np.round(c).astype(int).tolist())
-            # Füge die verknüpfte Farbe der Farbsequenz hinzu
+            # Append the linked color to the color sequence
             if c_tuple in color_map:
                 labels.append(color_map[c_tuple])
             else:

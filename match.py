@@ -1,7 +1,7 @@
 from typing import Union, List, Tuple
 from collections import Counter
 
-# Tantrix functions
+# Tantrix helper functions
 
 tiles_complete = ['112323', '212313', '131322', '112332', '131223', '121332', '113232',
                   '112233', '121323', '113223', '131232', '221331', '113322', '121233',
@@ -15,10 +15,11 @@ tiles_complete = ['112323', '212313', '131322', '112332', '131223', '121332', '1
 
 def get_dist(tile, col):
     """
-    Abstand von einer Farbe in der Codierung, Beispiel: get_dist("121323", 1) liefert 2
-    :param tile: Codierung eines Steins
-    :param col: gesuchte Farbe
-    :return: Abstand im array zwischen den beiden farbigen Kanten
+    Distance between the two occurrences of a color in a tile encoding.
+    Example: get_dist("121323", 1) returns 2 (distance) and starting index.
+    :param tile: encoding string of a tile
+    :param col: color to search for (as int or value convertible to str)
+    :return: (distance between the two color positions, index of first occurrence)
     """
     if str(col) not in tile:
         return 0, 0
@@ -32,18 +33,22 @@ def get_dist(tile, col):
 
 def shift_tile(tile, offset: int):
     """
-    :param tile: eine Liste mit den Farben des Spielsteins
-    :param offset: um wie viele Stellen wird die Codierung von rechts nach links verschoben
-    :return: das verschobene Tile
+    Shift a tile encoding circularly by offset positions to the left.
+    :param tile: a list (or sequence) with the six color values of the tile
+    :param offset: how many positions to shift (positive = shift left)
+    :return: shifted tile as a new list
     """
     return [tile[(i + offset) % 6] for i in range(6)]
 
 
 def sort_sol(tile):
     """
-    Stein-codierung richtig verschieben
-    :param tile: Codierung eines Steins
-    :return: korrekte Codierung
+    Rotate the tile encoding into a canonical orientation.
+    The function searches for a color j in {1,2,3} whose two occurrences
+    determine the proper rotation and then rotates the tile accordingly.
+
+    :param tile: tile encoding (iterable of length 6)
+    :return: rotated tile (list) in canonical position
     """
     for j in range(1, 4):
         distance, index = get_dist(tile, j)
@@ -61,57 +66,70 @@ def sort_sol(tile):
 
 def preprocess_input(raw_input: List[Union[int, List[int]]]) -> List[List[int]]:
     """
-    Erzeugt alle möglichen Varianten des Inputs, indem Wahlmöglichkeiten (Listen) aufgelöst werden,
-    Nullen entfernt und dann Duplikate in Folge entfernt werden.
-    Beispiel: [3, [4, 3], 3, 1, 0, [4, 1], 1, [4, 3]]
+    Generate all plausible variants from the raw input by expanding choices (lists),
+    removing zeros and then compressing consecutive duplicates.
+
+    Example input: [3, [4, 3], 3, 1, 0, [4, 1], 1, [4, 3]]
+    The expansion logic keeps different orderings for ambiguous slots and creates
+    a set of compressed candidate sequences (as strings).
+
+    :param raw_input: list of ints or lists representing ambiguous entries
+    :return: a list of candidate strings representing compressed variants
     """
-    # Entferne alle 0-Werte
+    # Remove all zero entries
     cleaned = [entry for entry in raw_input if entry != 0]
 
-    # Für jeden Eintrag entweder die Zahl als Liste oder direkt übernehmen
+    # Expand entries: for each entry, either append the single value or
+    # expand choice-lists into multiple branches. The original expansion logic
+    # from the project is preserved.
     expanded = [[]]
     for entry in cleaned:
-        # print(f"{entry=}")
         if isinstance(entry, list):
             expanded_list_length = len(expanded)
             for i in range(expanded_list_length):
                 exp = expanded[i]
+                # keep permutations and variants similar to the original behavior
                 expanded.append(exp + [entry[1], entry[0]])
                 expanded.append(exp + [entry[0]])
                 expanded.append(exp + [entry[1]])
                 exp += entry
         else:
-            # print(f"int")
             for exp in expanded:
                 exp.append(entry)
-    # print(f"{expanded=}")
 
-    # Entferne direkt aufeinanderfolgende Duplikate in jeder Variante
+    # Remove consecutive duplicate values in each variant and ensure circular
+    # duplicates (last == first) are eliminated.
     def compress(seq: List[int]) -> List[int]:
         compressed = [seq[0]]
         for x in seq[1:]:
             if x != compressed[-1]:
                 compressed.append(x)
-        if compressed[-1] == compressed[0]:  # Entferne das letzte Element, falls es dem ersten gleicht
+        if compressed[-1] == compressed[0]:  # Remove last element if equal to first
             compressed = compressed[:-1]
         return compressed
 
     compressed_variants = {tuple(compress(list(variant))) for variant in expanded}
+    # keep only variants shorter than full tile length
     compressed_variants = {var for var in compressed_variants if len(var) < 7}
     selected_variants = []
     for variant in compressed_variants:
         c = Counter(variant)
+        # discard variants where any color appears 3 or more times
         if max(c.values()) < 3:
             selected_variants.append(''.join([str(pos) for pos in variant]))
     return selected_variants
-        
+                
 
 
 def match_pattern(compressed_input: str, pattern: str) -> Union[str, None]:
     """
-    Versucht, eine eindeutige Variablenbelegung für pattern -> compressed_input zu finden.
-    Gibt die ausgeschriebene Typenfolge zurück, z.B. '223131' für 'aabcbc', wenn möglich.
-    Sonst None.
+    Attempt to find a unique assignment of variables in `pattern` to the
+    digits in `compressed_input`. If successful, return the expanded tile code
+    string (e.g. '223131' for pattern 'aabcbc'). Otherwise return None.
+
+    :param compressed_input: compressed candidate string (e.g. '23131')
+    :param pattern: compact pattern using letters like 'abcbc', 'abc' etc.
+    :return: expanded tile code string or None
     """
     if len(compressed_input) != len(pattern):
         return None
@@ -122,36 +140,36 @@ def match_pattern(compressed_input: str, pattern: str) -> Union[str, None]:
     for char_pat, char_inp in zip(pattern, compressed_input):
         if char_pat in mapping:
             if mapping[char_pat] != char_inp:
-                return None  # Widerspruch
+                return None  # contradiction
         else:
             if char_inp in used_values:
-                return None  # Zwei Buchstaben sollen auf gleiche Farbe gehen
+                return None  # two pattern letters map to the same digit
             mapping[char_pat] = char_inp
             used_values[char_inp] = True
+    # Debug prints preserved from original
     print(f"{mapping=}")
     print(f"{used_values=}")
-    # Rekonstruiere die vollständige Typenfolge (z. B. 'aabcbc' -> '223131')
+    # Reconstruct the full expanded type string (e.g. 'aabcbc' -> '223131')
     full_type_expanded = ''.join(mapping[c] for c in expand_pattern(pattern))
     return full_type_expanded
 
 
 def expand_pattern(pattern: str) -> str:
     """
-    Gibt die erweiterte Version eines komprimierten Musters zurück.
-    Beispiele:
-        'abc'    -> 'aabbcc'   (Typ ccc)
-        'abcbc'  -> 'aabcbc'   (Typ cxx)
-        'abcb'   -> 'aabccb'    (Typ clc)
-        'abacbc' -> 'abacbc' (Typ clh)
+    Return the expanded version of a compact pattern.
+    Examples:
+        'abc'    -> 'aabbcc'   (type ccc)
+        'abcbc'  -> 'aabcbc'   (type cxx)
+        'abcb'   -> 'aabccb'   (type clc)
+        'abacbc' -> 'abacbc'   (type clh)
     """
-    # Beispielhafte Regeln (müssen evtl. je nach Konvention angepasst werden)
     expansions = {
         'abc':    'aabbcc',     # ccc
         'abcbc':  'aabcbc',     # cxx
-        'abcb':   'aabccb',      # clc
-        'abacbc': 'abacbc',   # clh
+        'abcb':   'aabccb',     # clc
+        'abacbc': 'abacbc',     # clh
     }
-    return expansions.get(pattern, pattern)  # Fallback: keine Expansion
+    return expansions.get(pattern, pattern)  # Fallback: no expansion
 
 
 def rotate_string(s: str, n: int) -> str:
@@ -159,25 +177,36 @@ def rotate_string(s: str, n: int) -> str:
 
 
 def find_matching_type(compressed_input: str, input_pattern: str = None) -> Union[Tuple['str', 'str'], None]:
+    """
+    Try to match a compressed input string against known tile patterns.
+    If an explicit input_pattern is provided, only that pattern is tried.
+    Otherwise a default set of patterns is attempted.
+
+    The function rotates the input string to account for circular shifts.
+    Returns the matched expanded tile string or None.
+    """
     if input_pattern is None:
-        known_patterns = ['abc', 'abcbc', 'abcb', 'ababcb']  # kann angepasst werden
+        known_patterns = ['abc', 'abcbc', 'abcb', 'ababcb']  # can be adapted
     else:
         known_patterns = [input_pattern]
 
     for pattern in known_patterns:
         print(f"{pattern=}")
         for shift in range(len(compressed_input)):
-            # print(f"{shift=}")
             rotated = rotate_string(compressed_input, shift)
             print(f"{rotated=}")
             match = match_pattern(rotated, pattern)
             if match:
-                # return pattern, match
                 return match
     return None
 
 
 def check_variants(input_variants: List[List[int]], input_pattern: str = None) -> Union[str, None]:
+    """
+    Check a list of candidate variants (strings) and return the first
+    variant that matches a known tile pattern (optionally restricted to
+    `input_pattern`). Returns the matched expanded string or None.
+    """
     for variant in input_variants:
         output = find_matching_type(variant, input_pattern=input_pattern)
         if output is not None:
@@ -186,7 +215,12 @@ def check_variants(input_variants: List[List[int]], input_pattern: str = None) -
 
 
 def get_tile_number(matched_variant: Union[str, None]) -> Union[int, None]:
-    """Get the index of the Tantrix tile"""
+    """
+    Return the index (tile number) of the matched variant within the
+    master list `tiles_complete`. The matched_variant is first
+    standardized (rotated) using `sort_sol` and then looked up.
+    Returns None if matched_variant is None.
+    """
     if matched_variant is not None:
         standardized_format = ''.join(sort_sol(matched_variant))
         tile_number = tiles_complete.index(standardized_format)
@@ -198,7 +232,6 @@ def get_tile_number(matched_variant: Union[str, None]) -> Union[int, None]:
 def main():
     variants = preprocess_input([3, [4, 3], 3, 1, 0, [4, 1], 1, [4, 3]])
     print(f"{variants=}")
-    # out = find_matching_type('23131', input_pattern=None)
     out = check_variants(variants, input_pattern='abacbc')
     print(f"{out=}")
     get_tile_number(out)
