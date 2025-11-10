@@ -77,9 +77,9 @@ def process_crops(image_dir, base_crop_dir="crops", remove_crop_dir=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("image_path", help="Pfad zum Bild, verwende z.B. 'Roboflow/tantrix-extreme.jpg'")
-    parser.add_argument("--output_path", "-o", help="Pfad zu den ausgeschnittenen Bildern (default: crops\)", default="crops")
-    parser.add_argument("--remove_dir", help="Entferne den Ordner mit den ausgeschnittenen Bildern am Ende", default=False)
+    parser.add_argument("image_path", help="Path to the image, e.g. 'Roboflow/tantrix-extreme.jpg'")
+    parser.add_argument("output_path", help="Path to the cropped images (default: crops)", default="crops")
+    parser.add_argument("--remove_dir", "-r", action="store_true", help="Remove the folder containing the cropped images after processing", default=False)
     args = parser.parse_args()
 
     # Step 1: Analyse the image and create the crops
